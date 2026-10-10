@@ -4,7 +4,7 @@ This repository is the phone app's code. It is **public**. GitHub Pages serves i
 
 ## Rules
 
-1. **No data here, ever.** No listings, addresses, names, notes, stars, criteria, prices, access codes or anything else from the private notebook. Not in code, comments, tests, screenshots or commit messages. Before every commit, read `git diff --cached`.
+1. **No data here, ever.** No listings, addresses, names, notes, stars, criteria, prices, access codes or anything else from the private notebook. Not in code, comments, tests, screenshots or commit messages. Before every commit, read `git diff --cached`. The notebook's `CLAUDE.md` holds a grep that checks this folder for private words. Run it before every push.
 2. **The app talks to GitHub and nothing else.** Keep the Content-Security-Policy in `index.html` strict. No outside scripts, fonts, images, analytics or links to other services, apart from listing links the owner taps.
 3. **Everything shown is escaped.** All notebook text goes through `esc()` and links through `safeUrl()`.
 4. **The access code never leaves the phone** except as the Authorization header on calls to `api.github.com`. Never log it or put it in a URL.
