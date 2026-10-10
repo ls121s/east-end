@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- This app may talk to its own files and to GitHub's API. Nothing else: no trackers, no ads, no outside scripts or fonts. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#F3F7F4">
+<meta name="color-scheme" content="light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="East End">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+<title>East End</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- Lock screen: shown until this phone holds an access code that opens the notebook. -->
+<div id="lock" class="lock" hidden>
+  <img class="lockicon" src="icons/icon-192.png" alt="" width="84" height="84">
+  <h1>East End</h1>
+  <p class="sub">Your private house hunt. It opens with your access code.</p>
+
+  <div class="panel" id="lock-install" hidden>
+    <h3>First, put it on your home screen</h3>
+    <ol class="steps">
+      <li>Tap the Share button in Safari.</li>
+      <li>Choose <b>Add to Home Screen</b>, then Add.</li>
+      <li>Open East End from your home screen and paste your code there.</li>
+    </ol>
+    <p class="muted small">The home screen app keeps its own storage, so a code pasted here in Safari would not carry over.</p>
+    <button class="linkbtn" id="lock-skip" type="button">Use it in this browser instead</button>
+  </div>
+
+  <form class="panel" id="lock-form" autocomplete="off">
+    <div class="field" id="lock-userfield" hidden>
+      <label for="lock-user">GitHub username</label>
+      <input id="lock-user" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="lock-code">Access code</label>
+      <input id="lock-code" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="github_pat_...">
+    </div>
+    <button class="btn wide" id="lock-go" type="submit">Unlock</button>
+    <p class="notice" id="lock-msg" role="alert" hidden></p>
+  </form>
+
+  <details class="panel">
+    <summary>How do I get a code?</summary>
+    <ol class="steps">
+      <li>Open the link below in Safari, signed in to GitHub.</li>
+      <li>Under <b>Repository access</b> choose <b>Only select repositories</b> and pick <b id="lock-repo">east-end-notebook</b>.</li>
+      <li>Tap <b>Generate token</b> and copy it.</li>
+      <li>Come back here and paste it above.</li>
+    </ol>
+    <a class="btn ghost wide" id="lock-make" target="_blank" rel="noopener noreferrer" href="https://github.com/settings/personal-access-tokens/new">Create the code on GitHub</a>
+    <p class="muted small">The code opens your notebook and nothing else. It is kept on this phone only. You can cancel it on GitHub at any time.</p>
+  </details>
+</div>
+
+<!-- The app -->
+<div id="shell" hidden>
+  <header class="top">
+    <div class="topline">
+      <span class="eyebrow" id="eyebrow"></span>
+      <span class="topbtns">
+        <button class="iconbtn" id="refresh" type="button" aria-label="Refresh the board">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></svg>
+        </button>
+        <button class="iconbtn" id="gear" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/></svg>
+        </button>
+      </span>
+    </div>
+    <h1 id="title">Today</h1>
+    <div class="notice" id="banner" role="status" hidden></div>
+  </header>
+
+  <main id="main">
+    <div class="empty" id="loading">Opening your notebook…</div>
+
+    <section class="view" id="v-today" hidden>
+      <div id="todaynotice"></div>
+      <article class="panel latest" id="latest"></article>
+      <div class="tally" id="tally"></div>
+      <section class="block" id="mineblock">
+        <div class="secthead"><h2>Your starred</h2><button class="linkbtn" type="button" data-view="starred">Open the folder</button></div>
+        <ol class="minilist panel" id="minehome"></ol>
+      </section>
+      <section class="block">
+        <div class="secthead"><h2>Claude's top five</h2><p>My ranking today. Tap a row for the full card.</p></div>
+        <ol class="picks" id="five"></ol>
+      </section>
+      <section class="panel">
+        <h3>My read right now</h3>
+        <ul class="read" id="read"></ul>
+      </section>
+      <details class="panel fold">
+        <summary><h3>The brief</h3><span class="muted small">What I am hunting for, and how</span></summary>
+        <dl class="brief" id="brief"></dl>
+      </details>
+      <p class="fine" id="coverage"></p>
+    </section>
+
+    <section class="view" id="v-board" hidden>
+      <div class="bar">
+        <div class="chips" role="group" aria-label="Type">
+          <button class="chip-btn" type="button" data-type="All" aria-pressed="true">All</button>
+          <button class="chip-btn" type="button" data-type="House" aria-pressed="false">Houses</button>
+          <button class="chip-btn" type="button" data-type="Fixer" aria-pressed="false">Fixers</button>
+          <button class="chip-btn" type="button" data-type="Land" aria-pressed="false">Land</button>
+          <button class="chip-btn" type="button" id="nearOnly" aria-pressed="false">Close to home</button>
+        </div>
+        <div class="selects">
+          <label for="area">Area
+            <select id="area">
+              <option value="All">All areas</option>
+            </select>
+          </label>
+          <label for="maxp">Price
+            <select id="maxp">
+              <option value="0">Any price</option>
+            </select>
+          </label>
+          <label for="sort">Sort
+            <select id="sort">
+              <option value="rank">My ranking</option>
+              <option value="price">Price, low to high</option>
+              <option value="acres">Acres, most first</option>
+              <option value="ppa">Price per acre</option>
+              <option value="drive">Drive time</option>
+              <option value="newest">Newest on the board</option>
+            </select>
+          </label>
+        </div>
+        <span class="count" id="count"></span>
+      </div>
+      <ol class="picks" id="boardlist"></ol>
+      <p class="fine">The four bars on a card are my read, 1 to 5: land, value, location (drive time) and freedom to build.</p>
+      <section class="block">
+        <div class="secthead"><h2>Pending</h2><p>Under contract. I check these every morning and bring one back the day it reopens.</p></div>
+        <ol class="picks" id="pendinglist"></ol>
+      </section>
+      <section class="block">
+        <div class="secthead"><h2>Off the board</h2><p>Sold, withdrawn or gone since the first report.</p></div>
+        <ol class="picks" id="gonelist"></ol>
+      </section>
+      <details class="panel fold">
+        <summary><h3>Skipped, and why</h3><span class="muted small" id="skipcount"></span></summary>
+        <ul class="skips" id="skiplist"></ul>
+      </details>
+    </section>
+
+    <section class="view" id="v-starred" hidden>
+      <div id="minebody"></div>
+    </section>
+
+    <section class="view" id="v-reports" hidden>
+      <div id="replistwrap">
+        <p class="lede">One report for every morning's scan. Open a date to see only what changed that day.</p>
+        <ul class="replist" id="replist"></ul>
+      </div>
+      <div id="repdetailwrap" hidden>
+        <button class="backbtn" type="button" data-view="reports">All reports</button>
+        <article class="panel" id="repdetail"></article>
+      </div>
+    </section>
+
+    <section class="view" id="v-ask" hidden>
+      <div class="panel">
+        <h3>Leave a note for the morning scan</h3>
+        <p class="muted small">A question that needs research, a listing to dig into, or a change to what you want. I read these at the start of every scan, act on them and answer here.</p>
+        <textarea id="note" rows="3" maxlength="2000" placeholder="A listing to look into, a question, or a change to what you want." aria-label="Note for the morning scan"></textarea>
+        <div class="rowbtns"><button class="btn" id="savenote" type="button">Save note</button><span class="muted small" id="notestate"></span></div>
+      </div>
+      <ul class="notes" id="notes"></ul>
+      <div class="panel">
+        <h3>Need an answer now?</h3>
+        <p class="muted small">Live conversation and fresh research happen in the Claude app, in your House Hunting project. This app shows the board as of the last scan.</p>
+        <a class="btn ghost wide" id="chatlink" target="_blank" rel="noopener noreferrer" href="https://claude.ai/">Open Claude</a>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button type="button" data-view="today">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v2M5.3 7.3l1.4 1.4M18.7 7.3l-1.4 1.4M2.5 15h2M19.5 15h2"/><path d="M7 15a5 5 0 0 1 10 0"/><path d="M3 19h18"/></svg>
+      <span>Today</span><i class="dot" id="dot-today" hidden></i>
+    </button>
+    <button type="button" data-view="board">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
+      <span>Board</span>
+    </button>
+    <button type="button" data-view="starred">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"/></svg>
+      <span>Starred</span><i class="cnt" id="cnt-starred" hidden></i>
+    </button>
+    <button type="button" data-view="reports">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
+      <span>Reports</span>
+    </button>
+    <button type="button" data-view="ask">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6.5L8 20.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+      <span>Ask</span><i class="dot" id="dot-ask" hidden></i>
+    </button>
+  </nav>
+</div>
+
+<!-- One listing, full card -->
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-label="Listing details">
+  <div class="inner">
+    <div class="sheethead"><span class="grab" aria-hidden="true"></span><button class="x" id="sheetx" type="button">Close</button></div>
+    <div id="sheetbody"></div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="sheet" id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="inner">
+    <div class="sheethead"><span class="grab" aria-hidden="true"></span><button class="x" id="setx" type="button">Close</button></div>
+    <h2>Settings</h2>
+    <div class="panel">
+      <h3>Notebook</h3>
+      <p class="small" id="set-conn"></p>
+      <p class="muted small" id="set-saves"></p>
+      <div class="rowbtns"><button class="btn ghost" id="set-refresh" type="button">Refresh now</button></div>
+    </div>
+    <div class="panel">
+      <h3>Notifications</h3>
+      <p class="muted small" id="set-pushstate"></p>
+      <div class="rowbtns"><button class="btn" id="set-pushbtn" type="button" hidden>Turn on notifications</button></div>
+      <label class="check" id="set-quietrow" hidden><input type="checkbox" id="set-quiet"> <span>Also notify me on quiet days</span></label>
+    </div>
+    <div class="panel" id="set-install" hidden>
+      <h3>Put it on your home screen</h3>
+      <ol class="steps">
+        <li>Tap the Share button in Safari.</li>
+        <li>Choose <b>Add to Home Screen</b>, then Add.</li>
+        <li>Open East End from your home screen and paste your code there.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3>This phone</h3>
+      <p class="muted small">Your access code is kept on this phone only. Forgetting it locks the app here. The notebook itself is not touched.</p>
+      <div class="rowbtns"><button class="btn danger" id="set-forget" type="button">Forget the access code</button></div>
+    </div>
+    <p class="fine" id="set-version"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
