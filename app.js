@@ -123,8 +123,15 @@ function readFile(path){
     return {data:JSON.parse(b64decode(r.content)), sha:r.sha};
   }).catch(function(e){ if(e.status===404) return {data:null, sha:null}; throw e; });
 }
+/* Commits are signed with GitHub's no-reply address for the owner, so the account's real email never lands in the notebook. */
+function noReply(){ return (S.ownerId?S.ownerId+"+":"")+S.owner+"@users.noreply.github.com"; }
+function learnOwnerId(repo){
+  var id=repo && repo.owner && repo.owner.id;
+  if(id){ S.ownerId=String(id); lsSet("ee.ownerId", S.ownerId); }
+}
 function writeFile(path, data, sha, message){
-  var body={message:message, content:b64encode(JSON.stringify(data,null,2)+"\n"), branch:BRANCH};
+  var body={message:message, content:b64encode(JSON.stringify(data,null,2)+"\n"), branch:BRANCH,
+    committer:{name:S.owner, email:noReply()}};
   if(sha) body.sha=sha;
   return gh("PUT", contents(path), {body:body});
 }
@@ -254,7 +261,8 @@ function flushFile(f, ops, attempt){
 function flush(){
   if(S.flushing || !S.queue.length || !S.token) return;
   S.flushing=true; chrome();
-  var order=["stars","notes","push","prefs"], chain=Promise.resolve();
+  var order=["stars","notes","push","prefs"];
+  var chain=S.ownerId ? Promise.resolve() : gh("GET","").then(learnOwnerId, function(){});
   order.forEach(function(f){
     chain=chain.then(function(){
       var ops=S.queue.filter(function(o){ return o.f===f; });
@@ -687,7 +695,8 @@ function unlock(){
   if(/\s/.test(code)){ say("That does not look like a full code. Copy it again from GitHub, with no spaces."); return; }
   S.owner=own; S.token=code;
   btn.disabled=true; btn.textContent="Checking…"; m.hidden=true;
-  gh("GET","").then(function(){
+  gh("GET","").then(function(r){
+    learnOwnerId(r);
     lsSet("ee.token", code);
     if(!ownerFromAddress()) lsSet("ee.owner", own);
     $("lock-code").value="";
@@ -831,6 +840,7 @@ function startWorker(){
 function boot(){
   S.owner=ownerFromAddress() || lsGet("ee.owner") || "";
   S.token=lsGet("ee.token");
+  S.ownerId=lsGet("ee.ownerId")||null;
   S.queue=arr(lsJson("ee.queue", []));
   S.seenReport=lsGet("ee.seenReport");
   S.seenReplies=lsJson("ee.seenReplies", {}) || {};
