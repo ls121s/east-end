@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- This app may talk to its own files and to GitHub's API. Nothing else: no trackers, no ads, no outside scripts or fonts. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#F3F7F4">
+<meta name="theme-color" content="#F4F1E8">
 <meta name="color-scheme" content="light">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,7 +24,7 @@
 
 <!-- Lock screen: shown until this phone holds an access code that opens the notebook. -->
 <div id="lock" class="lock" hidden>
-  <img class="lockicon" src="icons/icon-192.png" alt="" width="84" height="84">
+  <img class="lockicon" src="icons/icon-192.png" alt="" width="72" height="72">
   <h1>East End</h1>
   <p class="sub">Your private house hunt. It opens with your access code.</p>
 
@@ -67,7 +67,7 @@
 
 <!-- The app -->
 <div id="shell" hidden>
-  <header class="top">
+  <header class="top" id="top">
     <div class="topline">
       <span class="eyebrow" id="eyebrow"></span>
       <span class="topbtns">
@@ -79,34 +79,71 @@
         </button>
       </span>
     </div>
-    <h1 id="title">Today</h1>
+    <h1 id="title"></h1>
+    <p class="tagline" id="tagline" hidden></p>
     <div class="notice" id="banner" role="status" hidden></div>
   </header>
 
   <main id="main">
-    <div class="empty" id="loading">Opening your notebook…</div>
+    <div id="loading" aria-live="polite">
+      <div class="skel map"></div>
+      <div class="skel rep"></div>
+      <div class="skel tiles"></div>
+      <p class="loadmsg" id="loadmsg" hidden></p>
+    </div>
 
     <section class="view" id="v-today" hidden>
       <div id="todaynotice"></div>
-      <article class="panel latest" id="latest"></article>
-      <div class="tally" id="tally"></div>
-      <section class="block" id="mineblock">
-        <div class="secthead"><h2>Your starred</h2><button class="linkbtn" type="button" data-view="starred">Open the folder</button></div>
-        <ol class="minilist panel" id="minehome"></ol>
+
+      <div class="homemap" id="homemap" role="button" tabindex="0" aria-label="Map of the board" hidden></div>
+
+      <div class="latestwrap">
+        <article class="latest" id="latest" role="button" tabindex="0"></article>
+        <div class="latestfoot"><button class="linkbtn" id="allreports" type="button" data-view="reports">All reports</button></div>
+      </div>
+
+      <button class="replystrip" id="replystrip" type="button" data-view="ask" hidden>
+        <span>Claude answered your note</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+
+      <div class="tilesblock">
+      <div class="tiles">
+        <button class="tile" id="tile-five" type="button" aria-expanded="false" aria-controls="fold-five">
+          <span class="trow"><svg class="tg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span>
+          <span class="tlabel">Top 5</span>
+          <span class="sub">Best matches today</span>
+        </button>
+        <button class="tile" id="tile-starred" type="button" aria-expanded="false" aria-controls="fold-starred">
+          <span class="trow"><svg class="tg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"/></svg><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span>
+          <span class="tnum" id="tile-starred-n">0</span>
+          <span class="tlabel sm">Starred</span>
+          <span class="sub" id="tile-starred-sub"></span>
+        </button>
+        <button class="tile" id="tile-board" type="button" data-view="board">
+          <span class="trow"><svg class="tg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14M15 6v14"/></svg><svg class="chev right" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
+          <span class="tnum" id="tile-board-n">0</span>
+          <span class="tlabel sm">On the board</span>
+          <span class="sub" id="tile-board-sub"></span>
+        </button>
+      </div>
+      <div class="fold-body" id="fold-five" role="region" aria-labelledby="tile-five"><div class="fold-in"><ol class="picks" id="five"></ol></div></div>
+      <div class="fold-body" id="fold-starred" role="region" aria-labelledby="tile-starred"><div class="fold-in"><ol class="minilist" id="minehome"></ol></div></div>
+      </div>
+
+      <section class="recent" id="recent" hidden>
+        <div class="recenthead"><span class="eyebrow">Recent activity</span><span class="rule"></span><button class="linkbtn" id="seeall" type="button">See all &rsaquo;</button></div>
+        <div class="rail" id="rail"></div>
       </section>
-      <section class="block">
-        <div class="secthead"><h2>Claude's top five</h2><p>My ranking today. Tap a row for the full card.</p></div>
-        <ol class="picks" id="five"></ol>
-      </section>
-      <section class="panel">
+
+      <section class="panel readfold" id="readfold">
         <h3>My read right now</h3>
         <ul class="read" id="read"></ul>
+        <div class="fold-body" id="fold-read"><div class="fold-in"><ul class="read" id="readrest"></ul></div></div>
+        <button class="linkbtn" id="readmore" type="button" aria-expanded="false" aria-controls="fold-read" hidden>Read all</button>
       </section>
-      <details class="panel fold">
-        <summary><h3>The brief</h3><span class="muted small">What I am hunting for, and how</span></summary>
-        <dl class="brief" id="brief"></dl>
-      </details>
-      <p class="fine" id="coverage"></p>
+
+      <button class="linkbtn footline" id="footline" type="button" data-sheet="brief"></button>
     </section>
 
     <section class="view" id="v-board" hidden>
@@ -144,18 +181,48 @@
       </div>
       <ol class="picks" id="boardlist"></ol>
       <p class="fine">The four bars on a card are my read, 1 to 5: land, value, location (drive time) and freedom to build.</p>
-      <section class="block">
-        <div class="secthead"><h2>Pending</h2><p>Under contract. I check these every morning and bring one back the day it reopens.</p></div>
-        <ol class="picks" id="pendinglist"></ol>
-      </section>
-      <section class="block">
-        <div class="secthead"><h2>Off the board</h2><p>Sold, withdrawn or gone since the first report.</p></div>
-        <ol class="picks" id="gonelist"></ol>
-      </section>
-      <details class="panel fold">
-        <summary><h3>Skipped, and why</h3><span class="muted small" id="skipcount"></span></summary>
-        <ul class="skips" id="skiplist"></ul>
-      </details>
+      <div class="folds">
+        <section class="fold">
+          <button class="foldhead" id="bf-pending" type="button" aria-expanded="false" aria-controls="fold-pending"><span>Pending <span class="cnt" id="pendcount"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body" id="fold-pending"><div class="fold-in">
+            <p class="small muted foldnote">Under contract. I check these every morning and bring one back the day it reopens.</p>
+            <ol class="picks" id="pendinglist"></ol>
+          </div></div>
+        </section>
+        <section class="fold">
+          <button class="foldhead" id="bf-gone" type="button" aria-expanded="false" aria-controls="fold-gone"><span>Off the board <span class="cnt" id="gonecount"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body" id="fold-gone"><div class="fold-in">
+            <p class="small muted foldnote">Sold, withdrawn or gone since the first report.</p>
+            <ol class="picks" id="gonelist"></ol>
+          </div></div>
+        </section>
+        <section class="fold">
+          <button class="foldhead" id="bf-skip" type="button" aria-expanded="false" aria-controls="fold-skip"><span>Skipped, and why <span class="cnt" id="skipcount"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body" id="fold-skip"><div class="fold-in">
+            <ul class="skips" id="skiplist"></ul>
+          </div></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="v-map" hidden>
+      <div class="chips" id="mapchips" role="group" aria-label="Map filters" hidden>
+        <button class="chip-btn" type="button" data-type="All" aria-pressed="true" id="chip-all">All</button>
+        <button class="chip-btn" type="button" data-type="House" aria-pressed="false">Houses</button>
+        <button class="chip-btn" type="button" data-type="Fixer" aria-pressed="false">Fixers</button>
+        <button class="chip-btn" type="button" data-type="Land" aria-pressed="false">Land</button>
+        <button class="chip-btn" type="button" data-near="1" aria-pressed="false">Within 15 min</button>
+        <button class="chip-btn" type="button" id="chip-top" aria-pressed="false">Top 5</button>
+        <button class="chip-btn" type="button" id="chip-starred" aria-pressed="false">Starred</button>
+      </div>
+      <div class="mapwrap" id="mapwrap" hidden>
+        <div id="mappane"><div id="mapstage"></div></div>
+        <button class="mapfit" id="mapfit" type="button" aria-label="Fit the pins in view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+        <div class="mapzoom" id="mapzoom" role="group" aria-label="Zoom" data-level="area"><i class="zthumb" aria-hidden="true"></i><button type="button" data-level="area" aria-pressed="true">Area</button><button type="button" data-level="close" aria-pressed="false">Close</button></div>
+        <div class="attrib" id="mapattrib"></div>
+        <div class="peek" id="peek" hidden></div>
+      </div>
+      <div class="empty" id="mapempty">The map is not built yet. Claude builds it at the next scan.</div>
     </section>
 
     <section class="view" id="v-starred" hidden>
@@ -164,12 +231,13 @@
 
     <section class="view" id="v-reports" hidden>
       <div id="replistwrap">
+        <button class="backbtn" id="rephome" type="button" data-view="today">Home</button>
         <p class="lede">One report for every morning's scan. Open a date to see only what changed that day.</p>
         <ul class="replist" id="replist"></ul>
       </div>
       <div id="repdetailwrap" hidden>
-        <button class="backbtn" type="button" data-view="reports">All reports</button>
-        <article class="panel" id="repdetail"></article>
+        <button class="backbtn" type="button">All reports</button>
+        <article class="panel repdetail" id="repdetail"></article>
       </div>
     </section>
 
@@ -191,8 +259,12 @@
 
   <nav class="tabbar" aria-label="Sections">
     <button type="button" data-view="today">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v2M5.3 7.3l1.4 1.4M18.7 7.3l-1.4 1.4M2.5 15h2M19.5 15h2"/><path d="M7 15a5 5 0 0 1 10 0"/><path d="M3 19h18"/></svg>
-      <span>Today</span><i class="dot" id="dot-today" hidden></i>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
+      <span>Home</span><i class="dot" id="dot-today" hidden></i>
+    </button>
+    <button type="button" data-view="map">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14M15 6v14"/></svg>
+      <span>Map</span>
     </button>
     <button type="button" data-view="board">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
@@ -201,10 +273,6 @@
     <button type="button" data-view="starred">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"/></svg>
       <span>Starred</span><i class="cnt" id="cnt-starred" hidden></i>
-    </button>
-    <button type="button" data-view="reports">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
-      <span>Reports</span>
     </button>
     <button type="button" data-view="ask">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6.5L8 20.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
@@ -225,7 +293,7 @@
 <div class="sheet" id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
   <div class="inner">
     <div class="sheethead"><span class="grab" aria-hidden="true"></span><button class="x" id="setx" type="button">Close</button></div>
-    <h2>Settings</h2>
+    <h2 class="sheettitle">Settings</h2>
     <div class="panel">
       <h3>Notebook</h3>
       <p class="small" id="set-conn"></p>
@@ -237,6 +305,11 @@
       <p class="muted small" id="set-pushstate"></p>
       <div class="rowbtns"><button class="btn" id="set-pushbtn" type="button" hidden>Turn on notifications</button></div>
       <label class="check" id="set-quietrow" hidden><input type="checkbox" id="set-quiet"> <span>Also notify me on quiet days</span></label>
+    </div>
+    <div class="panel">
+      <h3>Photos and map</h3>
+      <p class="muted small" id="set-media"></p>
+      <div class="rowbtns"><button class="btn ghost" id="set-clearmedia" type="button">Clear saved images</button></div>
     </div>
     <div class="panel" id="set-install" hidden>
       <h3>Put it on your home screen</h3>
@@ -252,6 +325,21 @@
       <div class="rowbtns"><button class="btn danger" id="set-forget" type="button">Forget the access code</button></div>
     </div>
     <p class="fine" id="set-version"></p>
+  </div>
+</div>
+
+<!-- The brief: what the hunt is for, coverage, the next scan -->
+<div class="sheet" id="briefsheet" hidden role="dialog" aria-modal="true" aria-label="The brief">
+  <div class="inner">
+    <div class="sheethead"><span class="grab" aria-hidden="true"></span><button class="x" id="briefx" type="button">Close</button></div>
+    <h2 class="sheettitle">The brief</h2>
+    <p class="lede">What I am hunting for, and how.</p>
+    <dl class="brief" id="briefdl"></dl>
+    <div class="panel">
+      <h3>Coverage</h3>
+      <p class="small muted" id="coverage"></p>
+    </div>
+    <button class="btn ghost wide" type="button" data-view="reports">Past reports</button>
   </div>
 </div>
 

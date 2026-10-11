@@ -1,11 +1,11 @@
 /* East End service worker: keeps the app's own files on the phone so it opens instantly and offline,
    and shows notifications. It never touches calls to GitHub: those always go straight to the network.
    Bump VERSION on every release (tools/release.sh does it) so phones pick up the new files. */
-const VERSION = "1.0.1";
+const VERSION = "2.0.0";
 const CACHE = "ee-shell-" + VERSION;
 const FILES = [
   "index.html", "app.css", "app.js", "config.js", "manifest.webmanifest",
-  "fonts/bricolage-grotesque.woff2", "fonts/figtree.woff2", "fonts/ibm-plex-mono-400.woff2", "fonts/ibm-plex-mono-500.woff2",
+  "fonts/instrument-serif.woff2", "fonts/instrument-serif-italic.woff2", "fonts/figtree.woff2", "fonts/ibm-plex-mono-400.woff2", "fonts/ibm-plex-mono-500.woff2",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/favicon-32.png"
 ];
 const SCOPE = self.registration.scope;
