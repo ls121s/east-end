@@ -920,22 +920,43 @@ function scanNotice(){
   return '<div class="notice">'+(behind===1 ? "Today's scan has not landed yet. " : "No scan has landed since "+esc(fmt(c))+". ")
     +"This is the board from "+esc(fmtShort(c))+"."+(behind>1 ? " Tell Claude in the project chat." : "")+'</div>';
 }
-/* The report card on Home. Index 0 is the newest report ("This morning"); older ones are named by their day. */
+/* A report's day as the card names it: "Yesterday" when it is the day before today, else the day itself. */
+function dayLabel(d, now){ return dnum(now.date)-dnum(d)===1 ? "Yesterday" : esc(fmtDay(d)); }
+/* The report card on Home. Index 0 is the newest report ("This morning"); older ones are named by their day.
+   Every card has the same parts (a summary line and a photo band even on a quiet day) so the stack keeps one height. */
 function latestHtml(r, i){
-  var now=louNow(), lead=r.quiet ? null : leadListing(r), eb;
-  if(i===0) eb = r.date===now.date ? "This morning" : "Latest report · "+esc(fmtDay(r.date));
-  else eb = (S.reports[0] && dnum(S.reports[0].date)-dnum(r.date)===1) ? "Yesterday" : esc(fmtDay(r.date));
+  var now=louNow(), lead=leadListing(r), eb;
+  if(i===0) eb = r.date===now.date ? "This morning" : "Latest report · "+dayLabel(r.date, now);
+  else eb = dayLabel(r.date, now);
   return '<span class="eyebrow">'+eb+(r.n?' · no. '+esc(r.n):'')+'</span>'+G.chev
     +'<p class="headline">'+esc(headline(r))+'</p>'
     +(r.summary?'<p class="summary">'+esc(r.summary)+'</p>':'')
     +'<div class="schips">'+reportChips(r)+'</div>'
     +(lead ? ph(lead,"band",false) : '');
 }
+/* Every card is as tall as the tallest report card, measured off screen once per width and set of reports; the photo band
+   takes the slack, so swiping never moves the dots and tiles under the card. */
+var latestH={w:0, key:"", h:0};
+function latestHeight(){
+  var box=$("latestbox"), latest=$("latest"), n=S.reports.length;
+  if(!n){ box.style.removeProperty("--latest-h"); latestH.h=0; return; }
+  var w=latest.clientWidth, key=S.reports[0].date+":"+n;
+  if(!(latestH.h && latestH.w===w && latestH.key===key)){
+    var m=document.createElement("article"); m.className="latest measure"; m.setAttribute("aria-hidden","true");
+    box.appendChild(m);
+    var h=0;
+    for(var k=0;k<n;k++){ m.innerHTML=latestHtml(S.reports[k], k).replace(/ data-sha="[^"]*"/g,""); h=Math.max(h, m.offsetHeight); }
+    box.removeChild(m);
+    latestH={w:w, key:key, h:h};
+  }
+  box.style.setProperty("--latest-h", latestH.h+"px");
+}
 /* The card for S.homeRep, the stack hint when an older report exists, and one dot per report (a window of seven at most). */
 function renderLatest(){
   var latest=$("latest"), n=S.reports.length;
   if(S.homeRep>=n) S.homeRep=Math.max(0, n-1);
   var i=S.homeRep, r=S.reports[i];
+  latestHeight();
   if(r){
     latest.setAttribute("data-rep", r.date);
     latest.setAttribute("aria-label", "Open the report: "+headline(r));
@@ -1231,7 +1252,7 @@ function paint(){
     var el=$("v-"+v), want=S.loaded && v===S.view;
     if(want){
       if(el.leaveTimer){ clearTimeout(el.leaveTimer); el.leaveTimer=0; el.classList.remove("leave"); }
-      if(el.hidden){ el.hidden=false; if(!RM && shownView && shownView!==v) el.classList.add("enter"); }
+      if(el.hidden){ el.hidden=false; if(!RM && shownView && shownView!==v) el.classList.add("enter"); if(v==="today") $("latest").classList.remove("rise"); }
     }else if(!el.hidden){
       if(!RM && S.loaded && shownView===v && !el.leaveTimer) leaveView(el); else { el.classList.remove("leave"); el.hidden=true; }
     }
@@ -1508,6 +1529,10 @@ document.addEventListener("animationend", function(e){
   else if(n==="pinin") el.classList.remove("in");            /* at rest the pin's own transform (selection, hover) takes over */
   else if(n==="stagein") el.classList.remove("fade");
 });
+document.addEventListener("animationcancel", function(e){          /* a view hidden mid-animation ends it without animationend */
+  var el=e.target, v=el && el.closest ? el.closest(".view") : null;
+  if(el && el.classList && e.animationName==="cardrise" && v && v.hidden) el.classList.remove("rise");   /* a new rise on a shown card keeps its class */
+});
 /* the Map pane: a pinch is ours, not the page's. Open pinch goes to Close at that point, a closed pinch back to Area. */
 (function(){
   var pane=$("mappane"), gx=NaN, gy=NaN, sc=1;
@@ -1615,9 +1640,10 @@ function dropGhost(){
 function canGo(dir){ var i=S.homeRep+(dir<0?1:-1); return i>=0 && i<S.reports.length; }
 /* Switch the card to report i. The old card is cloned and recedes behind (smaller, fading, drifting on in the swipe's direction)
    while the real card is re-rendered and rises from below. fromX and fromS are where the finger left it. Reduced motion: a plain swap. */
+function settleCard(){ var el=$("latest"); el.style.transition=""; el.style.transform=""; el.style.willChange=""; }
 function showRep(i, dir, fromX, fromS){
-  if(i<0 || i>=S.reports.length || i===S.homeRep) return;
   var latest=$("latest"), box=$("latestbox");
+  if(i<0 || i>=S.reports.length || i===S.homeRep){ settleCard(); return; }    /* nothing to go to: the card sits back where it was */
   dropGhost();
   latest.classList.remove("rise");
   if(!RM){
@@ -1647,14 +1673,19 @@ function showRep(i, dir, fromX, fromS){
 }
 (function(){
   var el=$("latest");
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ latestH.h=0; if(S.view==="today" && S.reports.length) renderLatest(); }); }catch(e){}
+  window.addEventListener("resize", function(){ if(S.view==="today" && S.reports.length && el.clientWidth!==latestH.w) renderLatest(); });
+  function touchById(list, id){ for(var k=0;k<list.length;k++) if(list[k].identifier===id) return list[k]; return null; }
   el.addEventListener("touchstart", function(e){
-    if(e.touches.length!==1 || S.overlay){ swipe=null; return; }
+    if(swipe && swipe.decided) return;                            /* a second finger changes nothing: the first one's swipe goes on */
+    if(e.touches.length!==1 || S.overlay){ swipe=null; return; }   /* two fingers, or a sheet is open */
     var p=e.touches[0];
-    swipe={x0:p.clientX, y0:p.clientY, dx:0, x:0, s:1, end:false, decided:false, hist:[]};
+    swipe={id:p.identifier, x0:p.clientX, y0:p.clientY, dx:0, x:0, s:1, end:false, decided:false, hist:[]};
   }, {passive:true});
   el.addEventListener("touchmove", function(e){
     var sw=swipe; if(!sw) return;
-    var p=e.touches[0], dx=p.clientX-sw.x0, dy=p.clientY-sw.y0;
+    var p=touchById(e.touches, sw.id); if(!p) return;
+    var dx=p.clientX-sw.x0, dy=p.clientY-sw.y0;
     if(!sw.decided){
       if(Math.abs(dx)<12 && Math.abs(dy)<12) return;
       if(Math.abs(dy)>=Math.abs(dx)){ swipe=null; return; }     /* mostly up or down: the page scrolls */
@@ -1673,17 +1704,23 @@ function showRep(i, dir, fromX, fromS){
       el.style.transform="translateX("+x.toFixed(1)+"px) scale("+sw.s.toFixed(3)+")";
     }
   }, {passive:false});
-  function endSwipe(){
-    var sw=swipe; swipe=null;
-    if(!sw || !sw.decided) return;
+  function endSwipe(e){
+    var sw=swipe; if(!sw) return;
+    if(e && e.type==="touchend" && e.touches.length && !touchById(e.changedTouches, sw.id)) return;   /* another finger lifted, ours is still down */
+    swipe=null;
+    if(!sw.decided) return;
     swipeBlock=Date.now();                                       /* the click that follows a drag is not a tap */
     var now=Date.now(), last=sw.hist[sw.hist.length-1], old=last, v=0;
     for(var i=sw.hist.length-1;i>=0;i--){ if(now-sw.hist[i][0]<=80) old=sw.hist[i]; else break; }
     if(last && old && last!==old) v=(last[1]-old[1])/Math.max(1, last[0]-old[0]);
     var dir=sw.dx<0?-1:1, fast=Math.abs(v)>0.6 && (v<0)===(dir<0) && Math.abs(sw.dx)>20;
     el.style.willChange="";
-    if(!sw.end && (Math.abs(sw.dx)>70 || fast)){ showRep(S.homeRep+(dir<0?1:-1), dir, sw.x, sw.s); return; }
-    if(RM){ el.style.transition=""; el.style.transform=""; return; }
+    var cancelled=!!(e && e.type==="touchcancel");               /* the system took the finger: never a switch, the card snaps back */
+    if(!cancelled && !sw.end && (Math.abs(sw.dx)>70 || fast)){
+      var j=S.homeRep+(dir<0?1:-1);
+      if(j>=0 && j<S.reports.length){ showRep(j, dir, sw.x, sw.s); return; }   /* the reports may have changed under the finger: then snap back */
+    }
+    if(RM){ settleCard(); return; }
     el.style.transition="transform 180ms var(--ease-out)";
     el.style.transform="";
     setTimeout(function(){ el.style.transition=""; }, 200);

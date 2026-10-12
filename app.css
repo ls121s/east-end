@@ -201,7 +201,8 @@ img[data-sha].now{transition:none}
 .cluster.in{animation:clusterin var(--t-pop) var(--ease-out) both}
 
 /* home: this morning. The card is a stack of the daily reports: swipe left for the day before, right for the day after.
-   The outgoing card is cloned (.ghost) and recedes behind while the new one rises; .stack is the edge of the next card peeking out below. */
+   The outgoing card is cloned (.ghost) and recedes behind while the new one rises with an opaque face; .stack is the edge of the next card peeking out below.
+   Every card is as tall as the tallest report card (measured, set as --latest-h) and the photo band takes the slack, so the swap never moves what sits under it. */
 .latestwrap{display:flex;flex-direction:column;gap:10px;position:relative}
 .latestbox{position:relative}
 .latestbox.stack::before{content:"";position:absolute;left:10px;right:10px;top:6px;bottom:-6px;background:var(--wash);border:1px solid var(--line);border-radius:20px}
@@ -213,7 +214,9 @@ img[data-sha].now{transition:none}
 .latest .eyebrow{padding-right:28px}
 .latest .headline{font-family:var(--display);font-size:28px;line-height:1.12;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-wrap:balance}
 .latest .summary{font-size:15px;line-height:1.45;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.latest .band{margin:8px -18px -18px;width:auto;border-radius:0;aspect-ratio:auto;height:150px}
+.latest .band{margin:8px -18px -18px;width:auto;border-radius:0;aspect-ratio:auto;height:auto;min-height:150px;flex:1 0 150px}
+.latest{min-height:var(--latest-h,0)}
+.latest.measure{position:absolute;left:0;right:0;top:0;visibility:hidden;pointer-events:none;min-height:0;z-index:-1;animation:none;transition:none}
 .latestfoot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0 4px;min-height:20px}
 .latestfoot .linkbtn{font-size:13px;margin-left:auto}
 .repdots{display:flex;gap:5px;align-items:center}
@@ -499,7 +502,7 @@ textarea{min-height:92px;max-height:260px;resize:vertical;border-radius:14px}
 .view.enter{animation:enter var(--t-2) var(--ease-out)}
 .view.leave{position:absolute;left:16px;right:16px;top:18px;opacity:0;pointer-events:none;max-height:60vh;overflow:hidden;transition:opacity var(--t-1) var(--ease-in)}
 @keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes cardrise{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:none}}
+@keyframes cardrise{from{transform:translateY(32px)}to{transform:none}}
 @keyframes enterx{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
 @keyframes enterback{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 @keyframes rise{from{transform:translateY(100%)}to{transform:none}}
