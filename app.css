@@ -66,7 +66,7 @@ svg{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tagline{font-size:16px;color:var(--muted);margin-top:4px}
 .top .notice{margin-top:12px}
-main{max-width:720px;margin:0 auto;padding:18px 16px calc(var(--tabh) + var(--safe-b) + 28px);position:relative}
+main{max-width:720px;margin:0 auto;padding:18px 16px calc(var(--tabh) + var(--safe-b) + 28px);position:relative;overflow-x:clip}
 .view{display:flex;flex-direction:column;gap:20px}
 .secthead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 14px}
 .secthead p{color:var(--muted);font-size:14px;flex-basis:100%}
@@ -200,17 +200,25 @@ img[data-sha].now{transition:none}
 .cluster:active{transform:translate(-50%,-50%) scale(.985);transition-duration:90ms}
 .cluster.in{animation:clusterin var(--t-pop) var(--ease-out) both}
 
-/* home: this morning */
-.latestwrap{display:flex;flex-direction:column;gap:6px}
-.latest{position:relative;background:var(--wash);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow-1);display:flex;flex-direction:column;gap:10px;overflow:hidden;cursor:pointer;transition:transform var(--t-fast) var(--ease-out)}
+/* home: this morning. The card is a stack of the daily reports: swipe left for the day before, right for the day after.
+   The outgoing card is cloned (.ghost) and recedes behind while the new one rises; .stack is the edge of the next card peeking out below. */
+.latestwrap{display:flex;flex-direction:column;gap:10px;position:relative}
+.latestbox{position:relative}
+.latestbox.stack::before{content:"";position:absolute;left:10px;right:10px;top:6px;bottom:-6px;background:var(--wash);border:1px solid var(--line);border-radius:20px}
+.latest{position:relative;z-index:1;background:var(--wash);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow-1);display:flex;flex-direction:column;gap:10px;overflow:hidden;cursor:pointer;touch-action:pan-y;-webkit-user-select:none;user-select:none;transition:transform var(--t-fast) var(--ease-out)}
 .latest:active{transform:scale(.985);transition-duration:90ms}
+.latest.ghost{position:absolute;left:0;top:0;width:100%;z-index:0;pointer-events:none;cursor:default}
+.latest.rise{animation:cardrise var(--t-out) var(--ease-out)}
 .latest .chev{position:absolute;right:16px;top:18px;width:16px;height:16px;color:var(--muted)}
 .latest .eyebrow{padding-right:28px}
 .latest .headline{font-family:var(--display);font-size:28px;line-height:1.12;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-wrap:balance}
 .latest .summary{font-size:15px;line-height:1.45;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .latest .band{margin:8px -18px -18px;width:auto;border-radius:0;aspect-ratio:auto;height:150px}
-.latestfoot{display:flex;justify-content:flex-end;padding-right:4px}
-.latestfoot .linkbtn{font-size:13px}
+.latestfoot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0 4px;min-height:20px}
+.latestfoot .linkbtn{font-size:13px;margin-left:auto}
+.repdots{display:flex;gap:5px;align-items:center}
+.repdots i{display:block;width:6px;height:6px;border-radius:999px;background:var(--line)}
+.repdots i.on{background:var(--green)}
 .replystrip{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-weight:600;font-size:15px;text-align:left;color:var(--ink);transition:transform var(--t-fast) var(--ease-out),background var(--t-fast)}
 .replystrip:active{background:var(--wash-2);transform:scale(.985);transition-duration:90ms}
 .replystrip .chev{width:16px;height:16px;color:var(--muted);flex:none}
@@ -491,6 +499,7 @@ textarea{min-height:92px;max-height:260px;resize:vertical;border-radius:14px}
 .view.enter{animation:enter var(--t-2) var(--ease-out)}
 .view.leave{position:absolute;left:16px;right:16px;top:18px;opacity:0;pointer-events:none;max-height:60vh;overflow:hidden;transition:opacity var(--t-1) var(--ease-in)}
 @keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes cardrise{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:none}}
 @keyframes enterx{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
 @keyframes enterback{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 @keyframes rise{from{transform:translateY(100%)}to{transform:none}}
@@ -524,6 +533,7 @@ textarea{min-height:92px;max-height:260px;resize:vertical;border-radius:14px}
   .cluster:active{transform:translate(-50%,-50%)}
   .iconbtn:active,.tabbar button:active,.star:active,.pickrow:active,.latest:active,.replystrip:active,.tile:active,.recard:active,.repbtn:active,.chip-btn:active,.btn:active,.open:active,.backbtn:active,.sheet .x:active,.viewmap:active,.mapfit:active{transform:none}
   .tile .chev,.foldhead .chev{transition:none}
+  .latest.rise{animation:none}
 }
 
 @media (max-width:359px){

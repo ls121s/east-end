@@ -1,6 +1,6 @@
 /* Settings for the East End app. Nothing private belongs in this file: it is public. */
 window.EE_CONFIG = {
-  version: "2.0.0",
+  version: "2.0.1",
 
   /* The private repository that holds the board, stars, notes and reports. */
   notebook: "east-end-notebook",

@@ -41,6 +41,7 @@ var S = {
   map:null, mapSel:null, mapLevel:"area", img:{}, imgFail:{}, pinsPlayed:null,
   mapKey:null, mapCKey:null, mapMs:1, mapWant:null, mapPick:null, mapClusters:[], homeW:0,
   homeFold:"", readOpen:false, folds:{pending:false, gone:false, skip:false},
+  homeRep:0,                                   /* the report the Home card shows: an index into reports, 0 is the newest. Memory only. */
   starPop:null, mediaText:null,
   seenReport:null, seenReplies:{}, confirm:null, pushState:"unknown"
 };
@@ -177,7 +178,9 @@ function applyBundle(b){
   b.listings.forEach(function(l){ if(l && IDRE.test(String(l.id))) L[l.id]=l; });
   S.L=L;
   S.home=b.home||{};
+  var newest=S.reports[0] ? S.reports[0].date : null;
   S.reports=arr(b.reports).filter(function(r){ return r && okDate(r.date); }).sort(function(a,b2){ return b2.date.localeCompare(a.date); });
+  if(!S.reports[0] || S.reports[0].date!==newest) S.homeRep=0;
   S.skipped=arr(b.skipped);
   S.replies=(b.replies && typeof b.replies==="object") ? b.replies : {};
   S.built=b.built||null;
@@ -737,7 +740,7 @@ function whereIs(l, sheet){
   var crop=(near && onMap) ? '<button class="nearmap"'+(sheet?' id="nearmap"':'')+' type="button" data-map="'+esc(l.id)+'" aria-label="See '+esc(l.addr)+' on the map">'
       +imgTag(near.sha, near.path, near.type, "")+pinHtml(l,{tag:"span"})+'<span class="attrib">'+esc(m.attribution)+'</span></button>'
       +'<p class="fine">The pin is the listing\'s own map point. For land it is often the road frontage.</p>' : '';
-  var apple="https://maps.apple.com/?ll="+pt.lat.toFixed(5)+","+pt.lon.toFixed(5)+"&q="+encodeURIComponent(String(l.addr||""))+"&z=15";
+  var apple="https://maps.apple.com/?ll="+pt.lat.toFixed(5)+","+pt.lon.toFixed(5)+"&q="+encodeURIComponent(String(l.addr||""))+"&z=15&t=h";
   var btns='<div class="btnrow'+(onMap?'':' one')+'">'
     +(onMap ? '<button class="btn ghost"'+(sheet?' id="seemap"':'')+' type="button" data-map="'+esc(l.id)+'">See on the map</button>' : '')
     +'<a class="btn ghost"'+(sheet?' id="applemaps"':'')+' href="'+esc(safeUrl(apple))+'" target="_blank" rel="noopener noreferrer">Open in Apple Maps</a></div>';
@@ -824,7 +827,7 @@ function card(l, sheet){
     +house
     +(l.take?'<p class="take">'+esc(l.take)+'</p>':'')
     +lists+meters+whereIs(l, sheet)
-    +((l.listed||l.hist)?'<div class="hist">'+(l.listed?'Listed '+esc(l.listed)+'. ':'')+esc(l.hist||"")+'</div>':'')
+    +((l.listed||l.hist)?'<div class="hist">'+((l.listed && !/^Listed\b/.test(String(l.hist||"")))?'Listed '+esc(l.listed)+'. ':'')+esc(l.hist||"")+'</div>':'')
     +'<div class="foot">'+link
     +'<button class="btn ghost" type="button" data-noteabout="'+esc(l.id)+'">Ask Claude about this one</button>'
     +(l.mls?'<span class="mls">MLS '+esc(l.mls)+'</span>':'')+'</div>'
@@ -917,23 +920,38 @@ function scanNotice(){
   return '<div class="notice">'+(behind===1 ? "Today's scan has not landed yet. " : "No scan has landed since "+esc(fmt(c))+". ")
     +"This is the board from "+esc(fmtShort(c))+"."+(behind>1 ? " Tell Claude in the project chat." : "")+'</div>';
 }
-function renderToday(){
-  var a=active().sort(byRank), why=(S.home && S.home.why)||{}, now=louNow(), r=S.reports[0];
-  $("todaynotice").innerHTML=scanNotice();
-  renderHomeMap();
-
-  var latest=$("latest");
+/* The report card on Home. Index 0 is the newest report ("This morning"); older ones are named by their day. */
+function latestHtml(r, i){
+  var now=louNow(), lead=r.quiet ? null : leadListing(r), eb;
+  if(i===0) eb = r.date===now.date ? "This morning" : "Latest report · "+esc(fmtDay(r.date));
+  else eb = (S.reports[0] && dnum(S.reports[0].date)-dnum(r.date)===1) ? "Yesterday" : esc(fmtDay(r.date));
+  return '<span class="eyebrow">'+eb+(r.n?' · no. '+esc(r.n):'')+'</span>'+G.chev
+    +'<p class="headline">'+esc(headline(r))+'</p>'
+    +(r.summary?'<p class="summary">'+esc(r.summary)+'</p>':'')
+    +'<div class="schips">'+reportChips(r)+'</div>'
+    +(lead ? ph(lead,"band",false) : '');
+}
+/* The card for S.homeRep, the stack hint when an older report exists, and one dot per report (a window of seven at most). */
+function renderLatest(){
+  var latest=$("latest"), n=S.reports.length;
+  if(S.homeRep>=n) S.homeRep=Math.max(0, n-1);
+  var i=S.homeRep, r=S.reports[i];
   if(r){
-    var lead=r.quiet ? null : leadListing(r);
     latest.setAttribute("data-rep", r.date);
     latest.setAttribute("aria-label", "Open the report: "+headline(r));
-    latest.innerHTML='<span class="eyebrow">'+(r.date===now.date ? "This morning" : "Latest report · "+esc(fmtDay(r.date)))+(r.n?' · no. '+esc(r.n):'')+'</span>'+G.chev
-      +'<p class="headline">'+esc(headline(r))+'</p>'
-      +(r.summary?'<p class="summary">'+esc(r.summary)+'</p>':'')
-      +'<div class="schips">'+reportChips(r)+'</div>'
-      +(lead ? ph(lead,"band",false) : '');
+    latest.innerHTML=latestHtml(r, i);
   }else{ latest.removeAttribute("data-rep"); latest.innerHTML='<p class="muted">No reports filed yet.</p>'; }
-  $("allreports").hidden=!S.reports.length;
+  $("latestbox").classList.toggle("stack", i<n-1);
+  var dots="", shown=Math.min(n,7), start=Math.max(0, Math.min(i-3, n-shown));
+  for(var k=0;k<shown;k++) dots+='<i'+(start+k===i?' class="on"':'')+'></i>';
+  $("repdots").innerHTML = n>1 ? dots : "";
+  $("allreports").hidden=!n;
+}
+function renderToday(){
+  var a=active().sort(byRank), why=(S.home && S.home.why)||{}, r=S.reports[0];
+  $("todaynotice").innerHTML=scanNotice();
+  renderHomeMap();
+  renderLatest();
   $("replystrip").hidden=!unseenReplies();
 
   var mine=mineList();
@@ -1473,12 +1491,17 @@ function onClick(t, e){
 document.addEventListener("keydown", function(e){
   if(e.key==="Escape" && S.overlay){ closeOverlay(); return; }
   var t=e.target;
+  if(t && t.id==="latest" && (e.key==="ArrowRight" || e.key==="ArrowLeft")){     /* Right is the older report, as a swipe to the left is */
+    e.preventDefault(); var dir=e.key==="ArrowRight" ? -1 : 1;
+    showRep(S.homeRep+(dir<0?1:-1), dir); return;
+  }
   if((e.key==="Enter" || e.key===" ") && t && t.getAttribute && t.getAttribute("role")==="button" && t.tagName!=="BUTTON"){ e.preventDefault(); t.click(); }
 });
 document.addEventListener("animationend", function(e){
   var el=e.target, n=e.animationName;
   if(!el || !el.classList) return;
   if(n==="enter" || n==="fade"){ el.classList.remove("enter"); el.classList.remove("swap"); }
+  else if(n==="cardrise") el.classList.remove("rise");
   else if(n==="tabpop" || n==="starpop" || n==="pop") el.classList.remove("pop");
   else if(n==="enterx") el.classList.remove("enter-x");
   else if(n==="enterback") el.classList.remove("enter-back");
@@ -1580,6 +1603,97 @@ function endDrag(){
 }
 document.addEventListener("touchend", endDrag, {passive:true});
 document.addEventListener("touchcancel", endDrag, {passive:true});
+
+/* ---------- Home: the report card is a stack, swiped sideways between days ---------- */
+/* dir is the way the finger went: -1 left (the older report rises), 1 right (the newer one). */
+var swipe=null, swipeBlock=0, ghostTimer=0;
+function dropGhost(){
+  var g=document.querySelector("#latestbox .ghost");
+  if(g && g.parentNode) g.parentNode.removeChild(g);
+  if(ghostTimer){ clearTimeout(ghostTimer); ghostTimer=0; }
+}
+function canGo(dir){ var i=S.homeRep+(dir<0?1:-1); return i>=0 && i<S.reports.length; }
+/* Switch the card to report i. The old card is cloned and recedes behind (smaller, fading, drifting on in the swipe's direction)
+   while the real card is re-rendered and rises from below. fromX and fromS are where the finger left it. Reduced motion: a plain swap. */
+function showRep(i, dir, fromX, fromS){
+  if(i<0 || i>=S.reports.length || i===S.homeRep) return;
+  var latest=$("latest"), box=$("latestbox");
+  dropGhost();
+  latest.classList.remove("rise");
+  if(!RM){
+    var g=latest.cloneNode(true), x=fromX||0;
+    g.removeAttribute("id"); g.removeAttribute("role"); g.removeAttribute("tabindex"); g.removeAttribute("data-rep"); g.removeAttribute("aria-label");
+    g.setAttribute("aria-hidden","true"); g.className="latest ghost";
+    Array.prototype.forEach.call(g.querySelectorAll("img"), function(im){ im.removeAttribute("data-sha"); });   /* the loader must not pick these up */
+    g.style.height=latest.offsetHeight+"px";
+    g.style.transition="none";
+    g.style.transform="translateX("+x.toFixed(1)+"px) scale("+(fromS||1)+")";
+    box.appendChild(g);
+    void g.offsetWidth;
+    g.style.transition="transform 220ms var(--ease-out),opacity 220ms var(--ease-out)";
+    g.style.transform="translateX("+(x+24*(dir<0?-1:1)).toFixed(1)+"px) scale(.92)";
+    g.style.opacity="0";
+    var gone=function(){ if(g.parentNode) g.parentNode.removeChild(g); if(ghostTimer){ clearTimeout(ghostTimer); ghostTimer=0; } };
+    g.addEventListener("transitionend", gone);
+    ghostTimer=setTimeout(gone, 400);
+  }
+  S.homeRep=i;
+  latest.style.transition="none"; latest.style.transform=""; latest.style.willChange="";
+  renderLatest();
+  hydrateImages();
+  void latest.offsetWidth;
+  latest.style.transition="";
+  if(!RM) latest.classList.add("rise");
+}
+(function(){
+  var el=$("latest");
+  el.addEventListener("touchstart", function(e){
+    if(e.touches.length!==1 || S.overlay){ swipe=null; return; }
+    var p=e.touches[0];
+    swipe={x0:p.clientX, y0:p.clientY, dx:0, x:0, s:1, end:false, decided:false, hist:[]};
+  }, {passive:true});
+  el.addEventListener("touchmove", function(e){
+    var sw=swipe; if(!sw) return;
+    var p=e.touches[0], dx=p.clientX-sw.x0, dy=p.clientY-sw.y0;
+    if(!sw.decided){
+      if(Math.abs(dx)<12 && Math.abs(dy)<12) return;
+      if(Math.abs(dy)>=Math.abs(dx)){ swipe=null; return; }     /* mostly up or down: the page scrolls */
+      sw.decided=true; swipeBlock=0;
+      dropGhost(); el.classList.remove("rise");
+      if(!RM) el.style.willChange="transform";
+    }
+    if(e.cancelable) e.preventDefault();
+    sw.end=!canGo(dx<0?-1:1);                                    /* past the newest or the oldest: resistance, no wraparound */
+    var x=sw.end ? Math.max(-40, Math.min(40, dx/3)) : dx;
+    sw.dx=dx; sw.x=x;
+    sw.hist.push([Date.now(), dx]); if(sw.hist.length>12) sw.hist.shift();
+    if(!RM){
+      sw.s=1-0.05*Math.min(1, Math.abs(x)/180);
+      el.style.transition="none";
+      el.style.transform="translateX("+x.toFixed(1)+"px) scale("+sw.s.toFixed(3)+")";
+    }
+  }, {passive:false});
+  function endSwipe(){
+    var sw=swipe; swipe=null;
+    if(!sw || !sw.decided) return;
+    swipeBlock=Date.now();                                       /* the click that follows a drag is not a tap */
+    var now=Date.now(), last=sw.hist[sw.hist.length-1], old=last, v=0;
+    for(var i=sw.hist.length-1;i>=0;i--){ if(now-sw.hist[i][0]<=80) old=sw.hist[i]; else break; }
+    if(last && old && last!==old) v=(last[1]-old[1])/Math.max(1, last[0]-old[0]);
+    var dir=sw.dx<0?-1:1, fast=Math.abs(v)>0.6 && (v<0)===(dir<0) && Math.abs(sw.dx)>20;
+    el.style.willChange="";
+    if(!sw.end && (Math.abs(sw.dx)>70 || fast)){ showRep(S.homeRep+(dir<0?1:-1), dir, sw.x, sw.s); return; }
+    if(RM){ el.style.transition=""; el.style.transform=""; return; }
+    el.style.transition="transform 180ms var(--ease-out)";
+    el.style.transform="";
+    setTimeout(function(){ el.style.transition=""; }, 200);
+  }
+  el.addEventListener("touchend", endSwipe, {passive:true});
+  el.addEventListener("touchcancel", endSwipe, {passive:true});
+  el.addEventListener("click", function(e){
+    if(swipeBlock && Date.now()-swipeBlock<400){ swipeBlock=0; e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();
 
 /* ---------- service worker: offline shell, updates, notifications ---------- */
 function startWorker(){

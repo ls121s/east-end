@@ -27,3 +27,5 @@ This repository is the phone app's code. It is **public**. GitHub Pages serves i
 ## Design
 
 Light theme only, by the owner's choice: a cream page, paper cards with a 1 px line and no shadow (the map card, the This morning card and the toast are the exceptions), deep forest green as the only strong colour. Colors are the tokens at the top of `app.css`. Type is Instrument Serif (weight 400 only, never bold) for headings and big numbers, Figtree for text and IBM Plex Mono for figures. Phone first: one column, a tab bar at the bottom (Home, Map, Board, Starred, Ask), cards that slide up as sheets. Only `transform` and `opacity` animate, and `prefers-reduced-motion` is respected everywhere. Writing is direct, numbers first, short sentences, no em dashes.
+
+The Home report card is a stack: swipe it sideways to move between days (left for the day before, right for the day after) with a card-stack animation, the old card receding behind as the new one rises. Apple Maps links open in hybrid view (satellite with road names).
