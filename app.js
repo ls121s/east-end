@@ -58,6 +58,8 @@ function fmtShort(d){ if(!okDate(d)) return ""; var p=d.split("-"); return MONTH
 function fmtDay(d){ if(!okDate(d)) return ""; var p=d.split("-"); var w=new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay(); return DAYS[w]+", "+MONTHS[+p[1]-1]+" "+(+p[2]); }
 function safeUrl(u){ return (typeof u==="string" && /^https:\/\//.test(u)) ? u : "#"; }
 function arr(x){ return Array.isArray(x)?x:[]; }
+function objs(x){ return arr(x).filter(function(v){ return v && typeof v==="object"; }); }
+function hasOwn(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } }
 function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
@@ -137,14 +139,21 @@ function repoUrl(path){ return API+"/repos/"+encodeURIComponent(S.owner)+"/"+enc
 function contents(path){ return "/contents/"+path.split("/").map(encodeURIComponent).join("/"); }
 function gh(method, path, opt){
   opt=opt||{};
-  var headers={"Authorization":"Bearer "+S.token, "Accept":(opt.raw||opt.bytes)?"application/vnd.github.raw+json":"application/vnd.github+json"};
+  var headers={"Authorization":"Bearer "+(opt.token||S.token), "Accept":(opt.raw||opt.bytes)?"application/vnd.github.raw+json":"application/vnd.github+json"};
+  if(opt.etag) headers["If-None-Match"]=opt.etag;   /* ask only whether the file changed: a 304 carries no body and costs no rate limit */
   var init={method:method, headers:headers, cache:"no-store"};
   if(opt.body){ headers["Content-Type"]="application/json"; init.body=JSON.stringify(opt.body); }
   var ctl=("AbortController" in window)?new AbortController():null, timer=0;
   if(ctl){ init.signal=ctl.signal; timer=setTimeout(function(){ ctl.abort(); }, 20000); }
   return fetch(repoUrl(path), init).then(function(res){
     clearTimeout(timer);
-    if(res.ok) return opt.bytes ? res.arrayBuffer() : (opt.raw ? res.text() : res.json());
+    if(opt.etag && res.status===304) return {notModified:true, etag:opt.etag};
+    if(res.ok){
+      var body=opt.bytes ? res.arrayBuffer() : (opt.raw ? res.text() : res.json());
+      if(!opt.meta) return body;
+      var tag=res.headers.get("ETag")||"";
+      return Promise.resolve(body).then(function(b){ return {body:b, etag:tag}; });
+    }
     return res.json().catch(function(){ return {}; }).then(function(j){
       var e=new Error("GitHub answered "+res.status); e.status=res.status; e.detail=j && j.message; throw e;
     });
@@ -164,11 +173,11 @@ function learnOwnerId(repo){
   var id=repo && repo.owner && repo.owner.id;
   if(id){ S.ownerId=String(id); lsSet("ee.ownerId", S.ownerId); }
 }
-function writeFile(path, data, sha, message){
+function writeFile(path, data, sha, message, tok){
   var body={message:message, content:b64encode(JSON.stringify(data,null,2)+"\n"), branch:BRANCH,
     committer:{name:S.owner, email:noReply()}};
   if(sha) body.sha=sha;
-  return gh("PUT", contents(path), {body:body});
+  return gh("PUT", contents(path), {body:body, token:tok});
 }
 
 /* ---------- reading the notebook ---------- */
@@ -177,11 +186,13 @@ function applyBundle(b){
   var L={};
   b.listings.forEach(function(l){ if(l && IDRE.test(String(l.id))) L[l.id]=l; });
   S.L=L;
-  S.home=b.home||{};
+  /* lists the screens walk hold objects only, so one odd entry in the notebook can never stop a screen from drawing */
+  S.home=(b.home && typeof b.home==="object") ? b.home : {};
+  S.home.read=objs(S.home.read); S.home.brief=objs(S.home.brief);
   var newest=S.reports[0] ? S.reports[0].date : null;
-  S.reports=arr(b.reports).filter(function(r){ return r && okDate(r.date); }).sort(function(a,b2){ return b2.date.localeCompare(a.date); });
+  S.reports=arr(b.reports).filter(function(r){ return r && okDate(r.date); }).map(function(r){ r.items=objs(r.items); return r; }).sort(function(a,b2){ return b2.date.localeCompare(a.date); });
   if(!S.reports[0] || S.reports[0].date!==newest) S.homeRep=0;
-  S.skipped=arr(b.skipped);
+  S.skipped=objs(b.skipped);
   S.replies=(b.replies && typeof b.replies==="object") ? b.replies : {};
   S.built=b.built||null;
   S.map=mapOf(b.map);
@@ -231,19 +242,26 @@ function saveMeCache(){ lsSet("ee.me", JSON.stringify(S.srv)); }
 function sync(){
   if(S.syncing || !S.token) return Promise.resolve();
   S.syncing=true; chrome();
+  /* When the board on this phone is already loaded, GitHub is asked only whether the notebook changed (its version tag
+     travels with the request). A 304 answer means nothing to download, parse or store. */
+  var tag=(S.loaded && lsGet("ee.bundle")) ? lsGet("ee.bundleEtag") : null;
   return Promise.all([
-    gh("GET", contents("app.json")+"?ref="+encodeURIComponent(BRANCH), {raw:true}),
+    gh("GET", contents("app.json")+"?ref="+encodeURIComponent(BRANCH), {raw:true, meta:true, etag:tag||null}),
     readFile(FILES.stars), readFile(FILES.notes), readFile(FILES.prefs)
   ]).then(function(r){
-    applyBundle(JSON.parse(r[0]));
-    lsSet("ee.bundle", r[0]);
+    if(!S.token) return;   /* the code was dropped while this was in flight: nothing from it may be kept */
+    if(!r[0].notModified){
+      applyBundle(JSON.parse(r[0].body));
+      /* the tag is kept only when the bundle it belongs to was stored, so a 304 can never leave an older board in place */
+      if(lsSet("ee.bundle", r[0].body) && r[0].etag) lsSet("ee.bundleEtag", r[0].etag); else lsDel("ee.bundleEtag");
+    }
     S.srv={stars:cleanStars(r[1].data), notes:cleanNotes(r[2].data), prefs:cleanPrefs(r[3].data)};
     saveMeCache();
     S.fromCache=false; S.syncErr=null; S.lastSync=Date.now();
     lsSet("ee.lastSync", String(S.lastSync));
     S.imgFail={}; tidyMedia();
   }).catch(function(e){
-    if(e.status===401){ lock("GitHub no longer accepts the access code on this phone. It expired or was cancelled. Create a new one and paste it here."); return; }
+    if(e.status===401){ lock("GitHub no longer accepts the access code on this phone. It expired or was cancelled. Create a new one and paste it here.", true); return; }
     S.syncErr = e.offline ? "offline" : (e.status===404 ? "missing" : (e.status===403 ? "denied" : "error"));
   }).then(function(){
     S.syncing=false; rebuildMe(); render();
@@ -317,7 +335,7 @@ function flush(){
     });
   });
   chain.then(function(){ S.saveErr=null; }, function(e){
-    if(e.status===401){ lock("GitHub no longer accepts the access code on this phone. Create a new one and paste it here. Your unsaved changes are kept."); return; }
+    if(e.status===401){ lock("GitHub no longer accepts the access code on this phone. Create a new one and paste it here. Your unsaved changes are kept.", true); return; }
     S.saveErr = e.offline ? "offline" : ((e.status===403 || e.status===404) ? "denied" : "error");
   }).then(function(){
     S.flushing=false; rebuildMe(); render();
@@ -936,20 +954,25 @@ function latestHtml(r, i){
 }
 /* Every card is as tall as the tallest report card, measured off screen once per width and set of reports; the photo band
    takes the slack, so swiping never moves the dots and tiles under the card. */
-var latestH={w:0, key:"", h:0};
+var latestH={w:0, f:"", h:0, by:{}};   /* heights by card markup: a day's new card costs one layout, not one per report kept */
+function hashStr(s){ var h=5381; for(var i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return h+":"+s.length; }
 function latestHeight(){
   var box=$("latestbox"), latest=$("latest"), n=S.reports.length;
   if(!n){ box.style.removeProperty("--latest-h"); latestH.h=0; return; }
-  var w=latest.clientWidth, key=S.reports[0].date+":"+n;
-  if(!(latestH.h && latestH.w===w && latestH.key===key)){
-    var m=document.createElement("article"); m.className="latest measure"; m.setAttribute("aria-hidden","true");
-    box.appendChild(m);
-    var h=0;
-    for(var k=0;k<n;k++){ m.innerHTML=latestHtml(S.reports[k], k).replace(/ data-sha="[^"]*"/g,""); h=Math.max(h, m.offsetHeight); }
-    box.removeChild(m);
-    latestH={w:w, key:key, h:h};
+  var w=latest.clientWidth, f=(document.fonts && document.fonts.status)||"";
+  if(latestH.w!==w || latestH.f!==f) latestH={w:w, f:f, h:0, by:{}};   /* a new width or newly loaded fonts change every height */
+  var m=null, h=0;
+  for(var k=0;k<n;k++){
+    var html=latestHtml(S.reports[k], k).replace(/ data-sha="[^"]*"/g,""), key=hashStr(html);
+    if(!hasOwn(latestH.by, key)){
+      if(!m){ m=document.createElement("article"); m.className="latest measure"; m.setAttribute("aria-hidden","true"); box.appendChild(m); }
+      m.innerHTML=html; latestH.by[key]=m.offsetHeight;
+    }
+    if(latestH.by[key]>h) h=latestH.by[key];
   }
-  box.style.setProperty("--latest-h", latestH.h+"px");
+  if(m) box.removeChild(m);
+  latestH.h=h;
+  box.style.setProperty("--latest-h", h+"px");
 }
 /* The card for S.homeRep, the stack hint when an older report exists, and one dot per report (a window of seven at most). */
 function renderLatest(){
@@ -1284,7 +1307,7 @@ function parseHash(){
   if((m=/^m-([A-Za-z0-9_-]{1,80})$/.exec(h))) return {view:"map", rep:null, mapSel:m[1]};
   if((m=/^r-(\d{4}-\d{2}-\d{2})$/.exec(h))) return {view:"reports", rep:m[1]};
   if(h==="home") return {view:"today", rep:null};
-  if(VIEWS[h]) return {view:h, rep:null};
+  if(hasOwn(VIEWS, h)) return {view:h, rep:null};
   return {view:"today", rep:null};
 }
 function applyHash(){
@@ -1304,7 +1327,7 @@ function replaceTo(hash){
   try{ history.replaceState(null,"",hash); }catch(e){ location.hash=hash; return; }
   applyHash();
 }
-function go(view){ if(VIEWS[view]) replaceTo("#"+view); window.scrollTo(0,0); }
+function go(view){ if(hasOwn(VIEWS, view)) replaceTo("#"+view); window.scrollTo(0,0); }
 function openReport(date){
   if(!okDate(date)) return;
   if(S.overlay){ S.view="reports"; S.rep=date; S.repPushed=false; replaceTo("#r-"+date); return; }
@@ -1328,8 +1351,15 @@ function codeLink(){
     +"&expires_in=366&contents=write";
 }
 var lockTimer=0;
-function lock(message){
+function lock(message, wipe){
   S.token=null; lsDel("ee.token");
+  if(wipe){
+    /* GitHub refused the code, so nothing private stays on a phone that can no longer read the notebook. Queued changes are kept. */
+    ["ee.bundle","ee.bundleEtag","ee.me","ee.lastSync","ee.seenReport","ee.seenReplies"].forEach(lsDel);
+    try{ if("caches" in window) caches.delete(IMGCACHE).catch(function(){}); }catch(e){}
+    revokeAll(); S.mediaText=null; S.mapKey=null;
+    S.loaded=false; S.fromCache=false; S.L={}; S.reports=[]; S.home=null; S.map=null; S.srv={stars:{}, notes:[], prefs:{}};
+  }
   clearTimeout(lockTimer);
   $("shell").hidden=true; $("shell").classList.remove("enter"); hideSheetsNow();
   document.documentElement.classList.remove("locked");
@@ -1385,8 +1415,9 @@ function showShell(fade){
   }else{ lk.hidden=true; lk.classList.remove("out"); }
 }
 function forget(){
-  S.queue=[]; S.srv={stars:{}, notes:[], prefs:{}};
-  ["ee.token","ee.bundle","ee.me","ee.queue","ee.lastSync","ee.seenReport","ee.seenReplies","ee.homeFold"].forEach(lsDel);
+  dropPush(S.token, lsGet("ee.push"));
+  S.queue=[]; S.srv={stars:{}, notes:[], prefs:{}}; S.pushState="off";
+  ["ee.token","ee.bundle","ee.bundleEtag","ee.me","ee.queue","ee.lastSync","ee.seenReport","ee.seenReplies","ee.homeFold","ee.push","ee.ownerId"].forEach(lsDel);
   try{ if("caches" in window) caches.delete(IMGCACHE).catch(function(){}); }catch(e){}
   revokeAll(); S.mediaText=null; S.pinsPlayed=null; S.mapKey=null; S.mapSel=null; S.mapPick=null; S.mapWant=null; S.mapClusters=[];
   S.loaded=false; S.L={}; S.reports=[]; S.home=null; S.map=null; S.overlay=null; S.overlayPushed=false; S.homeFold="";
@@ -1396,9 +1427,46 @@ function forget(){
 
 /* ---------- notifications ---------- */
 function pushReady(){ return !!CFG.vapidPublicKey && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function subscribeNew(reg){ return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64urlBytes(CFG.vapidPublicKey)}); }
+/* False only when the subscription was made with a different notification key than the app carries now (the key was replaced). */
+function keyMatches(sub){
+  try{
+    var k=sub && sub.options && sub.options.applicationServerKey;
+    if(!k || !(k instanceof ArrayBuffer || ArrayBuffer.isView(k))) return true;
+    var a=new Uint8Array(k), b=b64urlBytes(CFG.vapidPublicKey);
+    if(a.length!==b.length) return false;
+    for(var i=0;i<a.length;i++) if(a[i]!==b[i]) return false;
+    return true;
+  }catch(e){ return true; }
+}
+/* Notifications end with the code: the phone unsubscribes, then the notebook forgets this phone, using the code one last time. Best effort, never waited on. */
+function dropPush(tok, ep){
+  var done=function(){ if(tok && ep) return removeSub(tok, ep); };
+  try{
+    if(!pushReady()) return Promise.resolve().then(done).catch(function(){});
+    return navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); })
+      .then(function(sub){ if(sub){ ep=ep||sub.endpoint; return sub.unsubscribe(); } }).catch(function(){})
+      .then(done).catch(function(){});
+  }catch(e){ return Promise.resolve(); }
+}
+function removeSub(tok, ep){
+  return gh("GET", contents(FILES.push)+"?ref="+encodeURIComponent(BRANCH), {token:tok}).then(function(r){
+    var data=JSON.parse(b64decode(r.content)), subs=arr(data && data.subs).filter(function(s){ return s && typeof s.endpoint==="string"; });
+    var left=subs.filter(function(s){ return s.endpoint!==ep; });
+    if(left.length===subs.length) return;
+    return writeFile(FILES.push, {v:1, subs:left}, r.sha, "Notifications off: a phone forgot its code", tok);
+  });
+}
 function checkPush(){
   if(!pushReady()){ S.pushState="off"; return; }
-  navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){
+  navigator.serviceWorker.ready.then(function(reg){
+    return reg.pushManager.getSubscription().then(function(sub){
+      if(!(sub && !keyMatches(sub) && Notification.permission==="granted")) return sub;
+      /* the notification key was replaced: subscribe again with the new one, so the morning message keeps arriving */
+      var ep=sub.endpoint;
+      return sub.unsubscribe().then(function(){ enqueue({f:"push", op:"del", endpoint:ep}); lsDel("ee.push"); return subscribeNew(reg); });
+    });
+  }).then(function(sub){
     S.pushState = (sub && Notification.permission==="granted") ? "on" : "off";
     if(sub && S.pushState==="on" && lsGet("ee.push")!==sub.endpoint) recordSub(sub);   /* the phone rotated its address */
     render();
@@ -1416,7 +1484,10 @@ function pushOn(){
     if(perm!=="granted"){ render(); return; }
     return navigator.serviceWorker.ready.then(function(reg){
       return reg.pushManager.getSubscription().then(function(sub){
-        return sub || reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64urlBytes(CFG.vapidPublicKey)});
+        if(sub && keyMatches(sub)) return sub;
+        if(!sub) return subscribeNew(reg);
+        var ep=sub.endpoint;   /* made with a replaced key: the notebook forgets the old address too */
+        return sub.unsubscribe().then(function(){ enqueue({f:"push", op:"del", endpoint:ep}); lsDel("ee.push"); return subscribeNew(reg); });
       });
     }).then(function(sub){ recordSub(sub); S.pushState="on"; toast("Notifications are on for this "+deviceLabel()+"."); render(); });
   }).catch(function(){ toast("Could not turn notifications on. Try again in a moment."); });
@@ -1673,7 +1744,7 @@ function showRep(i, dir, fromX, fromS){
 }
 (function(){
   var el=$("latest");
-  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ latestH.h=0; if(S.view==="today" && S.reports.length) renderLatest(); }); }catch(e){}
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ latestH.by={}; latestH.f=""; if(S.view==="today" && S.reports.length) renderLatest(); }); }catch(e){}
   window.addEventListener("resize", function(){ if(S.view==="today" && S.reports.length && el.clientWidth!==latestH.w) renderLatest(); });
   function touchById(list, id){ for(var k=0;k<list.length;k++) if(list[k].identifier===id) return list[k]; return null; }
   el.addEventListener("touchstart", function(e){

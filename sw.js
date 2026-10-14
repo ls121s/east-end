@@ -1,7 +1,7 @@
 /* East End service worker: keeps the app's own files on the phone so it opens instantly and offline,
    and shows notifications. It never touches calls to GitHub: those always go straight to the network.
    Bump VERSION on every release (tools/release.sh does it) so phones pick up the new files. */
-const VERSION = "2.0.2";
+const VERSION = "2.0.3";
 const CACHE = "ee-shell-" + VERSION;
 const FILES = [
   "index.html", "app.css", "app.js", "config.js", "manifest.webmanifest",
