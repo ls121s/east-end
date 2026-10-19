@@ -31,7 +31,7 @@ var FOLDOK = !!(window.CSS && CSS.supports && CSS.supports("grid-template-rows",
 var S = {
   token:null, owner:"",
   loaded:false, fromCache:false, lastSync:0, syncing:false, syncErr:null,
-  home:null, L:{}, reports:[], skipped:[], replies:{}, built:null,
+  home:null, L:{}, lanes:{}, reports:[], skipped:[], replies:{}, built:null,
   srv:{stars:{}, notes:[], prefs:{}},          /* what the notebook holds */
   stars:{}, notes:[], prefs:{},                /* that, plus changes still waiting to save */
   queue:[], flushing:false, saveErr:null, flushTimer:0,
@@ -206,6 +206,7 @@ function applySettings(a){
   if(typeof a.tz==="string"){ try{ new Intl.DateTimeFormat("en-US",{timeZone:a.tz}); TZ=a.tz; }catch(e){} }
   LIMIT=(Number(a.driveLimit)>0 && Number(a.driveLimit)<MAXMIN) ? Number(a.driveLimit) : 15;
   S.budget=(Array.isArray(a.budget) && a.budget.length===2 && a.budget[0]<a.budget[1]) ? [Number(a.budget[0]), Number(a.budget[1])] : null;
+  S.lanes=(a.lanes && typeof a.lanes==="object" && !Array.isArray(a.lanes)) ? a.lanes : {};
   var areas=arr(a.areas).filter(function(x){ return x && typeof x.id==="string"; });
   if(!areas.length){
     var seen={};
@@ -769,7 +770,10 @@ function whereIs(l, sheet){
 function checked(){ return S.home && okDate(S.home.checked) ? S.home.checked : null; }
 function daysAgo(d){ var c=checked(); return (c && okDate(d)) ? dnum(c)-dnum(d) : 999; }
 function everything(){ return Object.keys(S.L).map(function(k){ return S.L[k]; }); }
-function active(){ return everything().filter(function(l){ return l.status==="active"; }); }
+function active(){ return everything().filter(function(l){ return l.status==="active" && !laneOf(l); }); }
+/* A lane is a second search beside the ranked board (the notebook names it; the id is a short word). Its listings carry no rank. */
+function laneOf(l){ return (typeof l.lane==="string" && /^[a-z]{1,24}$/.test(l.lane)) ? l.lane : ""; }
+function laneLabel(id){ var c=S.lanes[id]; return (c && typeof c.label==="string") ? c.label : id.charAt(0).toUpperCase()+id.slice(1); }
 function byRank(a,b){ return (a.rank||999)-(b.rank||999); }
 function ppa(l){ return l.acres ? l.price/l.acres : Infinity; }
 function flagOf(l){
@@ -815,6 +819,7 @@ function card(l, sheet){
   var tags="";
   if(l.status==="active" && l.rank<=5) tags+='<span class="pill pick">Claude pick '+esc(l.rank)+'</span>';
   else if(l.status==="active" && l.rank) tags+='<span class="pill">Rank '+esc(l.rank)+'</span>';
+  if(laneOf(l)) tags+='<span class="pill lane">'+esc(laneLabel(laneOf(l)))+'</span>';
   tags+='<span class="pill">'+esc(l.type||"Listing")+'</span>'+pillFor(l);
   var hero=ph(l, "hero", false, '<span class="shade"></span><span class="tags">'+tags+'</span>'+starBtn(l.id,l.addr)
     +(photoOf(l) ? '<span class="credit">Photo: '+esc(photoCredit(l))+'</span>' : ''));
@@ -1065,7 +1070,7 @@ function renderBoard(){
   }).join("") : '<li class="empty">No listings match these filters.</li>';
   $("count").textContent=rows.length+" of "+active().length+" listings";
   var all=everything();
-  var pend=all.filter(function(l){ return l.status==="pending"; }).sort(function(a,b){ return b.price-a.price; });
+  var pend=all.filter(function(l){ return l.status==="pending" && !laneOf(l); }).sort(function(a,b){ return b.price-a.price; });
   var gone=all.filter(function(l){ return l.status==="gone"; }).sort(function(a,b){ return String(b.goneDate).localeCompare(String(a.goneDate)); });
   $("pendinglist").innerHTML=pend.map(function(l){ return row(l, "hollow", l.pendingNote||"Under contract.", true); }).join("") || '<li class="empty">Nothing pending.</li>';
   $("gonelist").innerHTML=gone.map(function(l){ return row(l, "", (okDate(l.goneDate)?fmtShort(l.goneDate)+". ":"")+(l.goneNote||""), true); }).join("") || '<li class="empty">Nothing yet.</li>';
@@ -1075,6 +1080,17 @@ function renderBoard(){
   $("skiplist").innerHTML=S.skipped.map(function(s){
     return '<li><span class="ttl">'+esc(s.listing)+'</span><span class="num muted">'+esc(s.price)+'</span><span>'+esc(s.reason)+'</span></li>';
   }).join("") || '<li class="muted small">Nothing skipped yet.</li>';
+  /* each lane gets its own section: active first, then pending, biggest land first; the filters above do not touch it */
+  var lanes={};
+  all.forEach(function(l){ var k=laneOf(l); if(k && l.status!=="gone"){ (lanes[k]=lanes[k]||[]).push(l); } });
+  var lkeys=Object.keys(lanes).sort();
+  $("lanes").hidden=!lkeys.length;
+  $("lanes").innerHTML=lkeys.map(function(k){
+    var c=S.lanes[k]||{}, items=lanes[k].sort(function(a,b){ return (a.status==="pending"?1:0)-(b.status==="pending"?1:0) || (b.acres||0)-(a.acres||0); });
+    return '<section class="lane" data-lane="'+esc(k)+'"><h3>'+esc(laneLabel(k))+' <span class="cnt">('+items.length+')</span></h3>'
+      +(typeof c.note==="string" ? '<p class="small muted lanenote">'+esc(c.note)+'</p>' : '')
+      +'<ol class="picks">'+items.map(function(l){ return row(l, l.status==="pending"?"hollow":"", l.status==="pending" ? (l.pendingNote||"Under contract.") : (l.place||"")+" · "+(l.type||""), true); }).join("")+'</ol></section>';
+  }).join("");
   ["pending","gone","skip"].forEach(function(k){
     $("bf-"+k).setAttribute("aria-expanded", String(!!S.folds[k]));
     setOpen($("fold-"+k), !!S.folds[k]);

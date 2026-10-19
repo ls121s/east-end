@@ -546,3 +546,11 @@ textarea{min-height:92px;max-height:260px;resize:vertical;border-radius:14px}
   .tile .tnum{font-size:28px}
   h1.greet{font-size:34px}
 }
+
+/* Lanes: a second search beside the ranked board, each in its own card with the notebook's label and note. */
+.lanes{display:flex;flex-direction:column;gap:10px}
+.lane{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 16px 16px}
+.lane h3{font-family:var(--display);font-weight:400;font-size:22px;line-height:1.15;margin:0 0 6px;color:var(--ink)}
+.lane h3 .cnt{color:var(--muted)}
+.lanenote{margin:0 0 12px}
+.pill.lane{background:var(--green-soft);color:var(--moss)}
