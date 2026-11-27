@@ -1653,6 +1653,25 @@ document.addEventListener("visibilitychange", function(){
   if(document.visibilityState!=="visible" || !S.token) return;
   if(Date.now()-S.lastSync>120000) sync(); else { render(); if(S.queue.length) flushSoon(300); }
 });
+/* Keep the tab bar on the bottom edge. On iPhone home screen apps the page can drift or bounce under a fixed bar while
+   scrolling and swiping, which lifts the bar off the bottom. Pin it to the visible bottom edge, except while typing,
+   when the keyboard owns the bottom of the screen. */
+(function(){
+  var vv=window.visualViewport, bar=document.querySelector(".tabbar"); if(!vv || !bar) return;
+  var raf=0;
+  function typing(){ var a=document.activeElement; return !!(a && (a.tagName==="INPUT" || a.tagName==="TEXTAREA" || a.isContentEditable)); }
+  function pin(){
+    raf=0;
+    var off=typing() ? 0 : Math.round(vv.offsetTop + vv.height - window.innerHeight);
+    if(Math.abs(off)<=1 || Math.abs(off)>200) off=0;
+    bar.style.transform = off ? "translateY("+off+"px)" : "";
+  }
+  function soon(){ if(!raf) raf=requestAnimationFrame(pin); }
+  vv.addEventListener("resize", soon); vv.addEventListener("scroll", soon);
+  window.addEventListener("scroll", soon, {passive:true});
+  document.addEventListener("focusin", soon); document.addEventListener("focusout", soon);
+  pin();
+})();
 /* one empty passive listener so iOS draws :active states */
 document.body.addEventListener("touchstart", function(){}, {passive:true});
 try{
